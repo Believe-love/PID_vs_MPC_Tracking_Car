@@ -1,0 +1,13 @@
+{
+  "controller": "pid",
+  "seed": 42,
+  "dt": 0.02,
+  "steps": 1305,
+  "duration_s": 26.08,
+  "path_length_m": 9.42356164345839,
+  "stopped_off_line": 1,
+  "initial_lateral_offset": 0.008,
+  "initial_heading_error": 0.0,
+  "sensor_lookahead": 0.075,
+  "sensor_span": 0.12
+}

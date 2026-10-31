@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MPC 误差动力学推导</title>
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true
+  },
+  options: {
+    skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  }
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --fg: #1c1b19;
+    --muted: #5c574f;
+    --card: #fffdf8;
+    --line: #ddd6c8;
+    --accent: #1f4e79;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(180deg, #efe8da 0%, var(--bg) 180px);
+    color: var(--fg);
+    line-height: 1.75;
+  }
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 2rem 1.4rem 4rem;
+  }
+  h1, h2, h3 {
+    color: var(--accent);
+    line-height: 1.35;
+    margin-top: 2rem;
+  }
+  h2 {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.35rem;
+  }
+  p { margin: 0.85rem 0; }
+  ul { padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; }
+  hr {
+    border: none;
+    border-top: 1px solid var(--line);
+    margin: 2rem 0;
+  }
+  blockquote {
+    margin: 1rem 0;
+    padding: 0.6rem 1rem;
+    background: #eef4fa;
+    border-left: 4px solid var(--accent);
+    color: var(--muted);
+  }
+  .math-display {
+    overflow-x: auto;
+    margin: 1.1rem 0;
+    padding: 0.85rem 0.6rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    text-align: center;
+  }
+  .note {
+    font-size: 0.92rem;
+    color: var(--muted);
+    margin-bottom: 1.5rem;
+  }
+  strong { color: #12263a; }
+</style>
+</head>
+<body>
+<main>
+<p class="note">用浏览器打开本文件即可看到渲染后的数学公式。若公式未出现，请确认能访问 CDN（MathJax）。</p>
+<p>好，从零开始。我按“先建立几何图像 → 定义误差 → 直观理解 → 严格推导 → 线性化 → 离散化 → 怎么用在 MPC 里”的顺序讲，每一步都说明“为什么这样做”。</p>
+<hr>
+<h2>第 0 步：先把几何图像建立起来</h2>
+<p>想象俯视图。你的小车在世界坐标系里有一个位姿：</p>
+<div class='math-display'>
+\[
+q = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}
+\]
+</div>
+<p>\(x, y\) 是后轴中心的位置，\(\theta\) 是车头朝向与 x 轴的夹角。</p>
+<p>参考路径是一条曲线，用<strong>弧长 \(s\)</strong> 参数化。路径上每一个 \(s\) 对应一个参考点：</p>
+<div class='math-display'>
+\[
+q_r(s) = \begin{bmatrix} x_r(s) \\ y_r(s) \\ \theta_r(s) \end{bmatrix}
+\]
+</div>
+<p>其中 \(\theta_r(s)\) 是路径在该点的<strong>切线方向</strong>——也就是“如果车完美贴着路径走，车头应该朝的方向”。</p>
+<p><strong>关键概念：Frenet 坐标系。</strong> 在参考点 \(q_r(s)\) 处，可以建立一个局部坐标系：</p>
+<ul>
+<li><strong>切线方向</strong> \(\vec{t} = (\cos\theta_r, \sin\theta_r)\)：沿路径前进的方向</li>
+<li><strong>法线方向</strong> \(\vec{n} = (-\sin\theta_r, \cos\theta_r)\)：垂直于路径、指向左侧</li>
+</ul>
+<p>这个局部坐标系就是后面所有误差定义的“尺子”。<strong>误差不是在 世界坐标系 下量的，而是在参考点处的 Frenet 坐标系下量的</strong>——这是误差模型的核心思想。</p>
+<hr>
+<h2>第 1 步：定义两个误差变量</h2>
+<p>现在定义两个量：</p>
+<p><strong>横向误差 \(e_y\)</strong>：车辆位置到参考点的位移，在法线方向上的投影。</p>
+<p>车辆相对参考点的位移向量是：</p>
+<div class='math-display'>
+\[
+\vec{d} = (x - x_r,\; y - y_r)
+\]
+</div>
+<p>投影到法线方向 \(\vec{n} = (-\sin\theta_r, \cos\theta_r)\)：</p>
+<div class='math-display'>
+\[
+e_y = \vec{d} \cdot \vec{n} = -\sin\theta_r \cdot (x - x_r) + \cos\theta_r \cdot (y - y_r)
+\]
+</div>
+<p><strong>符号约定</strong>：这个定义下，\(e_y > 0\) 表示车在路径<strong>左侧</strong>。验证一下：路径沿 x 轴走（\(\theta_r = 0\)），参考点在原点，则 \(e_y = y\)。车在 y > 0（上方，即左侧），\(e_y > 0\)。✓</p>
+<p><strong>航向误差 \(e_\theta\)</strong>：车头方向与路径切线方向的夹角。</p>
+<div class='math-display'>
+\[
+e_\theta = \theta - \theta_r
+\]
+</div>
+<p>\(e_\theta > 0\) 表示车头相对路径<strong>偏左</strong>。</p>
+<p>这两个量合起来就是误差状态：</p>
+<div class='math-display'>
+\[
+e = \begin{bmatrix} e_y \\ e_\theta \end{bmatrix}
+\]
+</div>
+<p><strong>为什么选这两个量？</strong> 因为它们直接描述“车偏离路径多少”和“车头歪了多少”。你的 8 路红外算出的 error 本质上就是 \(e_y\) 的离散近似；\(e_\theta\) 是 PID 没有显式利用、但 MPC 需要的信息。</p>
+<hr>
+<h2>第 2 步：先不用公式，直观理解误差怎么变</h2>
+<p>在写微分方程之前，先想清楚物理直觉：</p>
+<p><strong>\(e_y\) 为什么会变？</strong> 车往前开，如果车头是正的（\(e_\theta = 0\)），车沿着路径切线方向走，横向偏差不变。如果车头偏左（\(e_\theta > 0\)），车往左前方走，横向偏差会<strong>增大</strong>（往左偏得更多）。所以：</p>
+<blockquote>
+<p>\(e_y\) 的变化率 ∝ 车速 × 航向偏差</p>
+</blockquote>
+<p><strong>\(e_\theta\) 为什么会变？</strong> 车头朝向的变化率就是角速度 \(\omega\)。参考路径切线方向的变化率是参考角速度 \(\omega_r = \kappa_r v_r\)（\(\kappa_r\) 是路径曲率）。所以航向误差的变化率就是两者之差：</p>
+<blockquote>
+<p>\(e_\theta\) 的变化率 = 车的角速度 − 参考角速度</p>
+</blockquote>
+<p>这两条直觉，就是下面严格推导的结果。公式只是把它们写精确。</p>
+<hr>
+<h2>第 3 步：严格推导误差动力学</h2>
+<p>对 \(e_y\) 求时间导数：</p>
+<div class='math-display'>
+\[
+\dot{e}_y = \frac{d}{dt}\left[-\sin\theta_r (x - x_r) + \cos\theta_r (y - y_r)\right]
+\]
+</div>
+<p>逐项求导（注意 \(\theta_r\) 也随时间变，因为参考点在沿路径移动）：</p>
+<div class='math-display'>
+\[
+\dot{e}_y = -\dot{\theta}_r\cos\theta_r(x-x_r) - \sin\theta_r(\dot{x}-\dot{x}_r) - \dot{\theta}_r\sin\theta_r(y-y_r) + \cos\theta_r(\dot{y}-\dot{y}_r)
+\]
+</div>
+<p>把含 \(\dot{\theta}_r\) 的项合并：</p>
+<div class='math-display'>
+\[
+= -\dot{\theta}_r\left[\cos\theta_r(x-x_r) + \sin\theta_r(y-y_r)\right] - \sin\theta_r\dot{x} + \cos\theta_r\dot{y} + \sin\theta_r\dot{x}_r - \cos\theta_r\dot{y}_r
+\]
+</div>
+<p>方括号里是位移在<strong>切线方向</strong>的投影，记为<strong>纵向误差 \(e_x\)</strong>：</p>
+<div class='math-display'>
+\[
+e_x = \cos\theta_r(x-x_r) + \sin\theta_r(y-y_r)
+\]
+</div>
+<p>中间两项代入车辆运动学 \(\dot{x} = v\cos\theta,\; \dot{y} = v\sin\theta\)：</p>
+<div class='math-display'>
+\[
+-\sin\theta_r \cdot v\cos\theta + \cos\theta_r \cdot v\sin\theta = v(\sin\theta\cos\theta_r - \cos\theta\sin\theta_r) = v\sin(\theta - \theta_r) = v\sin e_\theta
+\]
+</div>
+<p>最后两项代入参考点运动 \(\dot{x}_r = \dot{s}\cos\theta_r,\; \dot{y}_r = \dot{s}\sin\theta_r\)（\(\dot{s} = v_r\) 是参考速度）：</p>
+<div class='math-display'>
+\[
+\sin\theta_r \cdot v_r\cos\theta_r - \cos\theta_r \cdot v_r\sin\theta_r = 0
+\]
+</div>
+<p><strong>这一项恰好为零</strong>——参考点沿自己的切线方向运动，在法线方向没有分量，所以不直接贡献横向误差。这是 Frenet 坐标系的一个漂亮性质。</p>
+<p>最终得到：</p>
+<div class='math-display'>
+\[
+\boxed{\dot{e}_y = -\omega_r e_x + v\sin e_\theta}
+\]
+</div>
+<p>其中 \(\omega_r = \dot{\theta}_r = \kappa_r v_r\) 是参考角速度。</p>
+<p>对 \(e_\theta\) 求导更直接：</p>
+<div class='math-display'>
+\[
+\dot{e}_\theta = \dot{\theta} - \dot{\theta}_r = \omega - \omega_r
+\]
+</div>
+<div class='math-display'>
+\[
+\boxed{\dot{e}_\theta = \omega - \omega_r}
+\]
+</div>
+<p><strong>关于 \(e_x\) 的处理。</strong> 严格来说状态是三维 \([e_x, e_y, e_\theta]\)。但循迹任务只关心横向偏差和航向偏差，纵向走快走慢不影响“贴不贴线”。工程上常用的简化是<strong>忽略纵向耦合项 \(\omega_r e_x\)</strong>，得到二维误差模型：</p>
+<div class='math-display'>
+\[
+\boxed{\begin{aligned} \dot{e}_y &= v\sin e_\theta \\ \dot{e}_\theta &= \omega - \omega_r \end{aligned}}
+\]
+</div>
+<p>这个简化的含义是：假设车辆在参考点附近的纵向偏差不大，或者曲率与纵向偏差的乘积是小量。第一版 MPC 用这个二维模型完全够用；如果后续发现急弯处精度不够，再把 \(e_x\) 加回来变成三维。</p>
+<p><strong>注意 \(v\sin e_\theta\) 这个非线性项。</strong> 它就是急弯问题的数学根源：当航向偏差 \(e_\theta\) 较大时，横向误差的增长速率被 \(\sin e_\theta\) 放大。PID 看不到 \(e_\theta\)，只能等 \(e_y\) 变大后再反应；MPC 的模型里有这一项，可以在 \(e_y\) 还小时就通过控制 \(\omega\) 去压制 \(e_\theta\)。</p>
+<hr>
+<h2>第 4 步：线性化——把非线性模型变成 QP 能用的形式</h2>
+<p>上面得到的模型是非线性的（因为有 \(\sin e_\theta\)）。二次规划（QP）只能处理线性约束和二次目标，所以需要<strong>线性化</strong>。</p>
+<p><strong>在哪个点线性化？</strong> 这是关键选择。答案是：<strong>在参考点附近线性化</strong>，即假设 \(e_y \approx 0,\; e_\theta \approx 0,\; v \approx v_r,\; \omega \approx \omega_r\)。</p>
+<p>对 \(f_1 = v\sin e_\theta\) 在 \((e_\theta = 0, v = v_r)\) 处做一阶泰勒展开：</p>
+<div class='math-display'>
+\[
+v\sin e_\theta \approx v_r \cdot e_\theta + \sin(0)\cdot(v - v_r) = v_r e_\theta
+\]
+</div>
+<p>（\(\sin e_\theta \approx e_\theta\) 是小角度近似；速度偏差那一项系数是 \(\sin 0 = 0\)，所以一阶意义上速度偏差不直接进入 \(\dot{e}_y\)。）</p>
+<p>对 \(f_2 = \omega - \omega_r\) 本来就是线性的。</p>
+<p>所以线性化误差模型为：</p>
+<div class='math-display'>
+\[
+\boxed{\begin{aligned} \dot{e}_y &= v_r e_\theta \\ \dot{e}_\theta &= \omega - \omega_r \end{aligned}}
+\]
+</div>
+<p>写成矩阵形式：</p>
+<div class='math-display'>
+\[
+\dot{e} = A_c e + B_c \Delta u
+\]
+</div>
+<p>其中：</p>
+<div class='math-display'>
+\[
+A_c = \begin{bmatrix} 0 & v_r \\ 0 & 0 \end{bmatrix}, \quad
+B_c = \begin{bmatrix} 0 \\ 1 \end{bmatrix}, \quad
+\Delta u = \omega - \omega_r
+\]
+</div>
+<p>这里我把控制量取成 \(\omega\)（单输入），假设线速度 \(v\) 按参考速度 \(v_r\) 预调度（比如直道快、急弯慢）。如果你想同时优化 \(v\) 和 \(\omega\)，则：</p>
+<div class='math-display'>
+\[
+B_c = \begin{bmatrix} 0 & 0 \\ 0 & 1 \end{bmatrix}, \quad \Delta u = \begin{bmatrix} v - v_r \\ \omega - \omega_r \end{bmatrix}
+\]
+</div>
+<p><strong>线性化点携带了什么信息？</strong> \(A_c\) 里的 \(v_r\) 和 \(\omega_r\) 都是<strong>参考轨迹在该点的值</strong>。急弯处 \(\omega_r = \kappa_r v_r\) 大，这个信息通过模型进入预测。<strong>MPC 的“预打角”能力就来自这里</strong>——不是额外加了预瞄模块，而是参考曲率通过线性化模型自然进入了优化问题。</p>
+<p><strong>一个容易混淆的点</strong>：线性化是在参考点附近做的，不是在当前实际状态处做的。这意味着预测模型假设“车辆大致在参考轨迹附近”。如果偏差很大（比如丢线后车已经不知道偏到哪去了），线性模型会失真。循迹场景下偏差通常在小范围内，这个假设成立；README 里注明这一点即可。</p>
+<hr>
+<h2>第 5 步：离散化——从连续微分方程到递推公式</h2>
+<p>MPC 在计算机里按离散时间步求解。用前向欧拉，步长 \(T_s\) 等于你的控制周期（20 ms = 0.02 s）：</p>
+<div class='math-display'>
+\[
+e_{k+1} = e_k + T_s \cdot \dot{e}_k
+\]
+</div>
+<p>代入线性化模型：</p>
+<div class='math-display'>
+\[
+e_{k+1} = e_k + T_s(A_c e_k + B_c \Delta u_k) = (I + A_c T_s)e_k + B_c T_s \Delta u_k
+\]
+</div>
+<p>定义离散矩阵：</p>
+<div class='math-display'>
+\[
+A_d = I + A_c T_s = \begin{bmatrix} 1 & v_r T_s \\ 0 & 1 \end{bmatrix}, \quad
+B_d = B_c T_s = \begin{bmatrix} 0 \\ T_s \end{bmatrix}
+\]
+</div>
+<p>得到最终用于 MPC 的离散预测模型：</p>
+<div class='math-display'>
+\[
+\boxed{e_{k+1} = A_d e_k + B_d \Delta u_k}
+\]
+</div>
+<p>展开写就是：</p>
+<div class='math-display'>
+\[
+\begin{aligned}
+e_{y,k+1} &= e_{y,k} + v_r T_s \cdot e_{\theta,k} \\
+e_{\theta,k+1} &= e_{\theta,k} + T_s \cdot (\omega_k - \omega_r)
+\end{aligned}
+\]
+</div>
+<p><strong>这两个递推式就是 MPC 的“发动机”。</strong> 给定当前误差 \(e_0\) 和一串未来的控制量 \(\omega_0, \omega_1, \dots\)，就可以一步步往前推，预测未来 N 步的误差会变成什么样。</p>
+<p><strong>数值感受一下</strong>：\(v_r = 0.3\) m/s，\(T_s = 0.02\) s，则 \(v_r T_s = 0.006\) m。意思是：如果当前航向偏差 \(e_\theta = 0.1\) rad，一步之后横向误差会增加 0.0006 m。看起来很小，但预测 10 步（0.2 s）就是 6 mm；如果 \(e_\theta\) 持续不纠正，误差会累积。MPC 通过预测看到这个累积趋势，所以会提前打角。</p>
+<hr>
+<h2>第 6 步：这个模型在 MPC 里怎么用</h2>
+<p>现在把模型串起来。MPC 在每个控制周期做三件事：</p>
+<h3>（1）预测：从当前误差往前推 N 步</h3>
+<p>当前测量到（或估计出）误差 \(e_0 = [e_{y,0}, e_{\theta,0}]^T\)。给定未来 N 步的控制量 \(\omega_0, \dots, \omega_{N-1}\)，用递推式展开：</p>
+<div class='math-display'>
+\[
+e_1 = A_d e_0 + B_d \Delta u_0
+\]
+</div>
+<div class='math-display'>
+\[
+e_2 = A_d e_1 + B_d \Delta u_1 = A_d^2 e_0 + A_d B_d \Delta u_0 + B_d \Delta u_1
+\]
+</div>
+<div class='math-display'>
+\[
+\vdots
+\]
+</div>
+<div class='math-display'>
+\[
+e_N = A_d^N e_0 + \sum_{k=0}^{N-1} A_d^{N-1-k} B_d \Delta u_k
+\]
+</div>
+<p><strong>每一步的 \(A_d\) 可以不同</strong>（因为参考点沿路径移动，\(v_r, \omega_r\) 在变），这就是“线性时变模型”。实现时在第 k 步用该步参考点的 \(v_r(s_k), \omega_r(s_k)\) 构造 \(A_{d,k}, B_{d,k}\)。</p>
+<h3>（2）构造目标函数</h3>
+<p>MPC 要选一串 \(\Delta u_0, \dots, \Delta u_{N-1}\)，让预测的误差尽量小、控制量尽量平滑：</p>
+<div class='math-display'>
+\[
+J = \sum_{k=0}^{N-1} \left( e_k^T Q e_k + R \Delta u_k^2 + S(\Delta u_k - \Delta u_{k-1})^2 \right) + e_N^T P e_N
+\]
+</div>
+<ul>
+<li>\(e_k^T Q e_k = q_y e_{y,k}^2 + q_\theta e_{\theta,k}^2\)：惩罚横向偏差和航向偏差。\(q_y\) 通常设得比 \(q_\theta\) 大，因为你最关心别跑偏。</li>
+<li>\(R \Delta u_k^2\)：惩罚控制量偏离参考。\(R\) 大 → MPC 保守，贴着参考角速度走；\(R\) 小 → 允许大角速度纠偏。</li>
+<li>\(S(\Delta u_k - \Delta u_{k-1})^2\)：惩罚控制量<strong>变化</strong>。这一项 PID 里没有，它直接抑制“猛打角→超调→反向猛打”的振荡。</li>
+<li>\(e_N^T P e_N\)：终端代价，防止优化器“把误差甩到时域外”。工程上取一个较大的对角阵即可。</li>
+</ul>
+<p>把预测公式代入目标函数，\(J\) 就变成了关于决策变量 \(\Delta u_0, \dots, \Delta u_{N-1}\) 的<strong>二次函数</strong>——这就是 QP 的标准形式。</p>
+<h3>（3）加约束</h3>
+<div class='math-display'>
+\[
+\omega_{\min} \le \omega_k \le \omega_{\max} \quad \text{（电机能力）}
+\]
+</div>
+<div class='math-display'>
+\[
+|\omega_k - \omega_{k-1}| \le \Delta\omega_{\max} \quad \text{（角速度变化率限制，防突变）}
+\]
+</div>
+<p>可选软约束：</p>
+<div class='math-display'>
+\[
+|e_{y,k}| \le e_{y,\max} + \epsilon_k, \quad \epsilon_k \ge 0 \quad \text{（横向偏差软约束，防止丢线）}
+\]
+</div>
+<p>\(\epsilon_k\) 是松弛变量，目标函数里加一个大的惩罚 \(M \cdot \epsilon_k\)。这样即使物理上转不过来，QP 也不会不可行，而是给出“最不坏”的解，并且 \(\epsilon_k\) 的大小可以提前告诉你“要丢线了”。</p>
+<h3>（4）只执行第一步，然后滚动</h3>
+<p>QP 解出 \(\Delta u_0^*, \dots, \Delta u_{N-1}^*\)，<strong>只执行第一个</strong>：</p>
+<div class='math-display'>
+\[
+\omega_0 = \omega_r + \Delta u_0^*
+\]
+</div>
+<p>然后测量新的 \(e_y\)（从 8 路红外算）、更新 \(e_\theta\)，把新误差作为下一步的初始状态，<strong>重新线性化、重新求解</strong>。这就是“滚动时域”。</p>
+<hr>
+<h2>第 7 步：符号约定和实现注意</h2>
+<p><strong>\(e_y\) 的符号要和你传感器的 error 对齐。</strong> 你的代码里 error > 0 表示偏左、需要右转。我上面的定义 \(e_y = -\sin\theta_r(x-x_r) + \cos\theta_r(y-y_r)\) 也是“左正”。如果仿真里发现符号反了，把 \(e_y\) 定义整体取负即可，推导结构不变。</p>
+<p><strong>\(\omega_r\) 怎么算？</strong> \(\omega_r = \kappa_r v_r\)，其中 \(\kappa_r\) 是参考路径在参考点处的曲率。直线 \(\kappa_r = 0\)，\(\omega_r = 0\)；弯道 \(\kappa_r = 1/R\)。如果你的路径是参数化曲线，曲率可以直接解析求或数值差分求。<strong>这个量是 MPC 预测能力的来源</strong>，实现时不能漏。</p>
+<p><strong>\(e_\theta\) 从哪来？</strong> 仿真里可以直接用真值 \(\theta - \theta_r\) 加噪声。实物上 8 路红外测不了航向，需要估计（比如用相邻两步的 \(e_y\) 变化率反推，或加 IMU）。仿真阶段用真值加噪声是合理的理想化，README 里注明即可。</p>
+<p><strong>线性化点选参考点还是当前状态？</strong> 上面推导用的是参考点（\(e \approx 0\) 附近）。这保留了参考曲率信息，预测更准。如果偏差很大，可以改成在当前实际状态处线性化，但会丢失一部分预测信息。第一版用参考点线性化。</p>
+<p><strong>\(v\) 固定还是优化？</strong> 最简单：\(v = v_r\) 预调度（直道快、急弯慢），只优化 \(\omega\)，\(B_d\) 是单列，QP 很小。进阶：\(v\) 也作为决策变量，\(B_d\) 两列，约束里加 \(v_{\min} \le v \le v_{\max}\)。第一版建议单输入（只优化 \(\omega\)），先把预测逻辑跑通。</p>
+<hr>
+<h2>把整条链串起来</h2>
+<div class='math-display'>
+\[
+\text{车辆运动学} \xrightarrow{\text{Frenet 坐标变换}} \text{非线性误差动力学} \xrightarrow{\text{参考点线性化}} \text{线性误差模型} \xrightarrow{\text{前向欧拉}} \text{离散递推 } e_{k+1}=A_d e_k+B_d\Delta u_k
+\]
+</div>
+<div class='math-display'>
+\[
+\xrightarrow{\text{展开 N 步}} \text{预测 } e_{1:N} \text{ 是 } \Delta u_{0:N-1} \text{ 的线性函数} \xrightarrow{\text{代入二次代价}} \text{QP} \xrightarrow{\text{求解+只执行第一步}} \text{滚动}
+\]
+</div>
+<p><strong>你急弯痛点在理论上的对应</strong>：急弯处 \(\omega_r\) 大，线性化模型 \(A_d\) 携带这个信息，优化器在 \(e_y\) 还很小时就产生非零 \(\Delta\omega\)（预打角）；同时 \(S\) 项和 \(\Delta\omega_{\max}\) 约束抑制角速度突变（防丢线）；软约束的松弛变量在物理不可行时提前告警。这三件事在 PID 的结构里都做不了，因为 PID 没有模型、没有预测、约束只能事后裁剪。</p>
+</main>
+</body>
+</html>

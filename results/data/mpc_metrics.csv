@@ -1,0 +1,43 @@
+metric,value,unit,note
+seed,42,,随机种子
+dt_s,0.02,s,控制周期
+duration_s,32.08,s,仿真时长
+steps,1605,,步数
+max_abs_error,3.5,sensor_unit,最大 |error|
+rms_error,0.7904907237918876,sensor_unit,RMS(error)
+max_abs_lat_m,0.09424156445450382,m,全程最大 |横向误差|
+max_dist_m,0.09424156445450382,m,全程最大到线距离
+line_loss_steps,31,,Σweight=0 的步数
+line_loss_time_s,0.62,s,丢线时长
+line_loss_event_count,3,,连续丢线次数
+line_loss_longest_s,0.38,s,最长丢线
+sharp_mode_time_s,2.38,s,急弯模式时长
+sharp_mode_entries,2,,进入急弯模式的次数
+sharp_max_abs_error,1.3062498504595863,sensor_unit,急弯段最大 |error|
+sharp_max_dist_m,0.0055107060400134515,m,急弯段最大到线距离
+corner_max_dist_m,0.09424156445450382,m,直角弯开始后的最大到线距离
+stopped_off_line,0,,因离线结束
+mean_speed_mps,0.29109580304425664,m/s,平均速度
+control_rate_rms,7.736917225942001,rad/s^2,控制量变化率 RMS
+qp_solve_time_ms_max,3.262199999880977,ms,QP 单步最大求解时间
+qp_solve_time_ms_mean,0.179358878468687,ms,QP 单步平均求解时间
+straight_max_abs_error,2.458810472272339,sensor_unit,straight
+straight_rms_error,0.6199201114449807,sensor_unit,straight
+straight_max_dist_m,0.04969981163446313,m,straight
+straight_line_loss_steps,0,,straight
+gentle_max_abs_error,0.32496520632836895,sensor_unit,gentle
+gentle_rms_error,0.09697919693685932,sensor_unit,gentle
+gentle_max_dist_m,0.0036340883459671544,m,gentle
+gentle_line_loss_steps,0,,gentle
+s_max_abs_error,0.876911589227779,sensor_unit,s
+s_rms_error,0.36630701015300715,sensor_unit,s
+s_max_dist_m,0.007150585952029576,m,s
+s_line_loss_steps,0,,s
+sharp_max_abs_error,1.3062498504595863,sensor_unit,sharp
+sharp_rms_error,0.7589367365359279,sensor_unit,sharp
+sharp_max_dist_m,0.0055107060400134515,m,sharp
+sharp_line_loss_steps,0,,sharp
+corner_max_abs_error,3.5,sensor_unit,corner
+corner_rms_error,1.4328540115438437,sensor_unit,corner
+corner_max_dist_m,0.09424156445450382,m,corner
+corner_line_loss_steps,31,,corner
